@@ -34,6 +34,7 @@ These are enforced by Cowork during ingestion:
 - **Default due date.** If no due date is mentioned, default to **3 business days** from the meeting date (Mon–Fri, skipping weekends).
 - **Relative dates.** "by end of week" resolves to the Friday of the meeting week. "within two weeks" = meeting date + 14 calendar days. "next Friday" is interpreted as the Friday of the *following* week unless the same-week Friday is more than a couple of days away (this is judgment-call territory; flag it in the dashboard's `dueDateNote` so the user can override).
 - **Transparency.** Every action item carries `dueDateSource` (`explicit`, `explicit-relative`, `default-3bd`) and a free-text `dueDateNote` so you can see *why* a date was chosen.
+- **Internal vs external owners are treated differently.** Internal teammates are people we manage; their due dates are real deadlines and overdue means escalation. External owners (clients, vendors, partners) are tracked the same way in the data, but the dashboard treats their commitments as *outstanding requests* rather than *deadlines* — softer language, no red badges, "follow up" rather than "resolve." Reflects the reality that we work for the client, not the other way around. The `role` field on each entry in `people.json` (`internal` or `external`) drives this throughout the UI.
 
 ## Workflow
 

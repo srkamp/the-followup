@@ -68,6 +68,8 @@
   .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; margin-left: 6px; vertical-align: middle; }
   .badge.overdue { background: rgba(239,111,108,0.15); color: var(--bad); }
   .badge.soon { background: rgba(241,176,76,0.18); color: var(--warn); }
+  .badge.outstanding { background: var(--chip); color: var(--muted); border: 1px dashed var(--border); }
+  .badge.expected { background: var(--chip); color: var(--muted); }
   .badge.unassigned { background: rgba(239,111,108,0.15); color: var(--bad); }
   .badge.unresolved { background: rgba(241,176,76,0.18); color: var(--warn); }
   .badge.default3bd { background: var(--chip); color: var(--muted); }
@@ -123,6 +125,9 @@
   .cal-event:hover { border-color: var(--accent); }
   .cal-event.overdue { border-left: 3px solid var(--bad); }
   .cal-event.soon { border-left: 3px solid var(--warn); }
+  .cal-event.outstanding { border-left: 3px dashed var(--muted); opacity: 0.85; }
+  .cal-event.expected { border-left: 3px dotted var(--muted); }
+  .cal-event.external { font-style: italic; }
   .cal-event.flag { color: var(--bad); }
   .cal-event.flag::before { content: "⚠ "; }
   .cal-event.cal-meeting { background: rgba(106,168,255,0.10); border-color: rgba(106,168,255,0.45); color: var(--accent); font-weight: 500; }
@@ -159,6 +164,15 @@
   .brief-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
   .brief-card.full { grid-column: 1 / -1; }
   .brief-card h3 { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 700; }
+  .brief-card h3 .card-sub { color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; margin-left: 6px; opacity: 0.7; text-transform: lowercase; }
+  .muted-inline { color: var(--muted); font-size: 12px; }
+  .outstanding-person { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .outstanding-person:first-child { padding-top: 0; }
+  .outstanding-person:last-child { border-bottom: none; padding-bottom: 0; }
+  .outstanding-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .outstanding-item { padding: 4px 0; font-size: 13px; }
+  .outstanding-item .brief-link { font-weight: 500; }
+  .outstanding-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
   @media (max-width: 720px) { .brief-grid { grid-template-columns: 1fr; } }
 
   .priority-list { list-style: none; padding: 0; margin: 0; counter-reset: pri; }
@@ -258,18 +272,22 @@
         <ol class="priority-list" id="briefPriorities"></ol>
       </div>
       <div class="brief-card">
-        <h3>At risk</h3>
+        <h3>At risk <span class="card-sub">internal</span></h3>
         <div id="briefRisk"></div>
       </div>
       <div class="brief-card">
-        <h3>Capacity</h3>
+        <h3>Outstanding from clients</h3>
+        <div id="briefOutstanding"></div>
+      </div>
+      <div class="brief-card">
+        <h3>Capacity <span class="card-sub">internal team</span></h3>
         <div id="briefCapacity"></div>
       </div>
       <div class="brief-card">
         <h3>This week</h3>
         <div id="briefWeek"></div>
       </div>
-      <div class="brief-card">
+      <div class="brief-card full">
         <h3>Coming up</h3>
         <div id="briefUpcoming"></div>
       </div>
@@ -473,12 +491,47 @@
   // ---------- shared row rendering ----------
   function meetingFor(id) { return data.meetings.find(m => m.id === id); }
 
-  function dueBadge(iso) {
+  // ----- internal/external classification -----
+  function personFor(name) {
+    if (!people || !people.people) return null;
+    return people.people.find(p => p.name === name) || null;
+  }
+  function isExternal(item) {
+    if (!item || item.ownerStatus !== "resolved") return false;
+    const p = personFor(item.owner);
+    return p && p.role === "external";
+  }
+  function isInternal(item) {
+    if (!item || item.ownerStatus !== "resolved") return false;
+    const p = personFor(item.owner);
+    return p && p.role === "internal";
+  }
+
+  // Urgency badge — soft language for external (clients) since we don't push them on deadlines.
+  // Accepts either an item (preferred) or a raw date string for backward compat.
+  function dueBadge(itemOrIso) {
     const t = todayISO();
+    const iso = typeof itemOrIso === "string" ? itemOrIso : itemOrIso.dueDate;
+    const item = typeof itemOrIso === "string" ? null : itemOrIso;
     const delta = daysBetween(t, iso);
+    const ext = item ? isExternal(item) : false;
+    if (ext) {
+      // soft, client-side language
+      if (delta < 0) return `<span class="badge outstanding">outstanding</span>`;
+      if (delta === 0) return `<span class="badge expected">expected today</span>`;
+      if (delta <= 3) return `<span class="badge expected">expected ${dayLabel(iso, delta)}</span>`;
+      return "";
+    }
+    // internal / unassigned — normal urgency
     if (delta < 0) return `<span class="badge overdue">overdue</span>`;
+    if (delta === 0) return `<span class="badge soon">due today</span>`;
     if (delta <= 3) return `<span class="badge soon">due in ${delta}d</span>`;
     return "";
+  }
+  function dayLabel(iso, delta) {
+    if (delta === 1) return "tomorrow";
+    const [y,m,d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m-1, d)).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
   }
 
   function ownerSelect(item) {
@@ -524,7 +577,7 @@
     const isDone = item.status === "done";
     const cls = `${isModified ? "row-modified " : ""}${isDone ? "row-done " : ""}`;
     const cells = [];
-    cells.push(`<td class="due">${escapeHtml(fmtDate(item.dueDate))} ${dueBadge(item.dueDate)}</td>`);
+    cells.push(`<td class="due">${escapeHtml(fmtDate(item.dueDate))} ${dueBadge(item)}</td>`);
     if (opts.includeOwner !== false) cells.push(`<td>${ownerSelect(item)}</td>`);
     cells.push(`<td class="desc">${descCell(item)}</td>`);
     cells.push(`<td class="meeting">${meetingCell(item)}</td>`);
@@ -645,13 +698,23 @@
     if (!data) return;
     const today = todayISO();
     const open = data.actionItems.filter(a => a.status !== "done");
-    const overdue = open.filter(a => a.dueDate < today).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+
+    // Internal vs external split — different treatment, different language.
+    const internal = open.filter(a => isInternal(a));
+    const external = open.filter(a => isExternal(a));
     const unowned = open.filter(a => a.ownerStatus !== "resolved");
-    const dueIn = (lo, hi) => open.filter(a => {
-      const d = daysBetween(today, a.dueDate); return d >= lo && d <= hi;
-    });
-    const dueTomorrow = dueIn(1, 1);
-    const dueSoon = dueIn(0, 3).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+
+    const internalOverdue = internal.filter(a => a.dueDate < today).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const internalDueTomorrow = internal.filter(a => daysBetween(today, a.dueDate) === 1);
+    const internalDueSoon = internal.filter(a => {
+      const d = daysBetween(today, a.dueDate); return d >= 0 && d <= 3;
+    }).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    // External: anything not done is "outstanding", but flag items already past expected date.
+    const externalSorted = external.slice().sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const externalDueSoon = external.filter(a => {
+      const d = daysBetween(today, a.dueDate); return d >= 0 && d <= 3;
+    }).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const externalPastExpected = external.filter(a => a.dueDate < today);
 
     const upcomingMeetings = data.meetings
       .filter(m => m.date >= today)
@@ -664,29 +727,25 @@
       weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC"
     });
 
-    // Headline — single sentence, choose worst-signal phrasing
+    // Headline — distinguish internal commitments (we own the deadline) from external requests (they don't work for us)
+    const headlineParts = [];
+    if (internalOverdue.length) headlineParts.push(`${internalOverdue.length} internal commitment${internalOverdue.length===1?"":"s"} past due`);
+    if (unowned.length) headlineParts.push(`${unowned.length} unassigned`);
+    if (external.length) headlineParts.push(`${external.length} request${external.length===1?"":"s"} outstanding with client${external.length===1?"":"s"}`);
     let headline;
-    if (overdue.length && unowned.length) {
-      headline = `${overdue.length} item${overdue.length===1?"":"s"} past due and ${unowned.length} still unowned heading into the week.`;
-    } else if (overdue.length) {
-      headline = `${overdue.length} item${overdue.length===1?"":"s"} carried over from last week — past due.`;
-    } else if (unowned.length) {
-      headline = `${unowned.length} item${unowned.length===1?"":"s"} still unowned. Assign before the week opens.`;
-    } else if (dueSoon.length) {
-      headline = `${dueSoon.length} item${dueSoon.length===1?"":"s"} due in the next three days; nothing past due, nothing unowned.`;
-    } else if (open.length === 0) {
-      headline = `Inbox zero. Nothing open.`;
+    if (headlineParts.length === 0) {
+      headline = open.length === 0 ? "Inbox zero. Nothing open." : `${open.length} item${open.length===1?"":"s"} open and on track.`;
     } else {
-      headline = `${open.length} open item${open.length===1?"":"s"}, all owned and on schedule.`;
+      headline = headlineParts.map((p,i) => i === 0 ? p.charAt(0).toUpperCase()+p.slice(1) : p).join(". ") + ".";
     }
     $("#briefHeadline").textContent = headline;
 
-    // Priorities — operator decisions, ranked
+    // Priorities — operator decisions for today, ranked. Internal items get firm language; external items get a polite "follow up" tone since we don't manage their deadlines.
     const priorities = [];
-    if (overdue.length) {
+    if (internalOverdue.length) {
       priorities.push({
-        action: `Resolve ${overdue.length} overdue item${overdue.length===1?"":"s"}`,
-        detail: overdue.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)}: ${escapeHtml(a.description)}</a>`).join("; "),
+        action: `Clear ${internalOverdue.length} overdue internal commitment${internalOverdue.length===1?"":"s"}`,
+        detail: internalOverdue.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)}: ${escapeHtml(a.description)}</a>`).join("; "),
         severity: "high"
       });
     }
@@ -697,10 +756,18 @@
         severity: "high"
       });
     }
-    if (dueTomorrow.length) {
+    if (externalDueSoon.length) {
+      // Group external follow-ups by client (the meeting where they were committed) for a tighter prompt.
       priorities.push({
-        action: `Confirm ${dueTomorrow.length} item${dueTomorrow.length===1?"":"s"} due tomorrow`,
-        detail: dueTomorrow.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)}: ${escapeHtml(a.description)}</a>`).join("; "),
+        action: `Follow up with client${externalDueSoon.length===1?"":"s"} on ${externalDueSoon.length} expected item${externalDueSoon.length===1?"":"s"}`,
+        detail: externalDueSoon.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)}: ${escapeHtml(a.description)} <span class="muted-inline">(expected ${escapeHtml(fmtDate(a.dueDate))})</span></a>`).join("; "),
+        severity: "med"
+      });
+    }
+    if (internalDueTomorrow.length) {
+      priorities.push({
+        action: `Check in on ${internalDueTomorrow.length} internal item${internalDueTomorrow.length===1?"":"s"} due tomorrow`,
+        detail: internalDueTomorrow.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)}: ${escapeHtml(a.description)}</a>`).join("; "),
         severity: "med"
       });
     }
@@ -724,54 +791,84 @@
       </li>
     `).join("");
 
-    // At risk
+    // At risk — internal-side concerns only. External requests have their own card.
     const riskParts = [];
-    if (overdue.length) {
-      riskParts.push(`<div class="risk-row severity-high"><strong>${overdue.length} overdue</strong>: ` +
-        overdue.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.description)} (${escapeHtml(a.owner)}, ${escapeHtml(fmtDate(a.dueDate))})</a>`).join("; ") + `</div>`);
+    if (internalOverdue.length) {
+      riskParts.push(`<div class="risk-row severity-high"><strong>${internalOverdue.length} internal overdue</strong>: ` +
+        internalOverdue.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.description)} (${escapeHtml(a.owner)}, ${escapeHtml(fmtDate(a.dueDate))})</a>`).join("; ") + `</div>`);
     }
     if (unowned.length) {
       riskParts.push(`<div class="risk-row severity-high"><strong>${unowned.length} unowned</strong>: ` +
         unowned.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.description)}</a>`).join("; ") + `</div>`);
     }
-    // Items where the meeting was external and the owner is external — these slip the most
-    const externalSlip = open.filter(a => {
-      if (a.ownerStatus !== "resolved") return false;
-      const m = meetingFor(a.meetingId); if (!m || m.type !== "external") return false;
-      const p = people.people.find(p => p.name === a.owner);
-      return p && p.role === "external";
-    });
-    if (externalSlip.length) {
-      riskParts.push(`<div class="risk-row severity-med"><strong>${externalSlip.length} external-owned, external-meeting</strong>: ` +
-        externalSlip.map(a => `<a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.owner)} → ${escapeHtml(a.description)}</a>`).join("; ") + ` <span class="risk-aside">(historically the slip-prone bucket)</span></div>`);
-    }
-    if (riskParts.length === 0) riskParts.push(`<div class="risk-row severity-low">Nothing flagged.</div>`);
+    if (riskParts.length === 0) riskParts.push(`<div class="risk-row severity-low">Nothing flagged on the internal side.</div>`);
     $("#briefRisk").innerHTML = riskParts.join("");
 
-    // Capacity
+    // Capacity — internal team only. External owners aren't on our team; their items live in the "Outstanding from clients" card.
     const capacity = {};
-    for (const a of open) capacity[a.owner] = (capacity[a.owner] || 0) + 1;
-    const capacityRows = [];
-    for (const p of people.people) {
+    for (const a of internal) capacity[a.owner] = (capacity[a.owner] || 0) + 1;
+    const internalPeople = people.people.filter(p => p.role === "internal");
+    const capacityRows = internalPeople.map(p => {
       const c = capacity[p.name] || 0;
-      const next = open.filter(a => a.owner === p.name)
+      const next = internal.filter(a => a.owner === p.name)
         .sort((a,b) => a.dueDate.localeCompare(b.dueDate))[0];
-      capacityRows.push(`
+      const overload = c >= 3 ? ' <span class="role-tag role-flag" title="Carrying 3+ open items">heavy</span>' : "";
+      return `
         <div class="capacity-row">
-          <div><span class="capacity-name">${escapeHtml(p.name)}</span> <span class="role-tag role-${p.role}">${p.role}</span></div>
+          <div><span class="capacity-name">${escapeHtml(p.name)}</span>${overload}</div>
           <div class="capacity-count">${c} open${next ? ` · next ${escapeHtml(fmtDate(next.dueDate))}` : ""}</div>
         </div>
-      `);
-    }
-    if (capacity["UNASSIGNED"]) {
+      `;
+    });
+    if (unowned.length) {
       capacityRows.push(`
         <div class="capacity-row">
           <div><span class="capacity-name">UNASSIGNED</span> <span class="role-tag role-flag">needs owner</span></div>
-          <div class="capacity-count">${capacity["UNASSIGNED"]} open</div>
+          <div class="capacity-count">${unowned.length} open</div>
         </div>
       `);
     }
     $("#briefCapacity").innerHTML = capacityRows.join("");
+
+    // Outstanding from clients — external-owned items, soft language. Shows what we're waiting on, when it was committed, and how long it's been.
+    if (externalSorted.length === 0) {
+      $("#briefOutstanding").innerHTML = `<div class="empty-mini">Nothing outstanding from clients.</div>`;
+    } else {
+      // Group by client (we use the meeting's title as a proxy for the account)
+      const byPerson = {};
+      for (const a of externalSorted) {
+        if (!byPerson[a.owner]) byPerson[a.owner] = [];
+        byPerson[a.owner].push(a);
+      }
+      const blocks = [];
+      for (const [owner, items] of Object.entries(byPerson)) {
+        const role = "external";
+        const personItems = items.map(a => {
+          const meeting = meetingFor(a.meetingId);
+          const daysSinceMeeting = meeting ? daysBetween(meeting.date, today) : null;
+          const past = a.dueDate < today;
+          const expectedLabel = past
+            ? `expected ${escapeHtml(fmtDate(a.dueDate))} <span class="muted-inline">(${daysBetween(a.dueDate, today)}d ago)</span>`
+            : `expected ${escapeHtml(fmtDate(a.dueDate))}`;
+          const committedLabel = daysSinceMeeting != null
+            ? `committed ${daysSinceMeeting}d ago`
+            : "";
+          return `
+            <div class="outstanding-item">
+              <a href="#" class="brief-link" data-action-id="${escapeHtml(a.id)}">${escapeHtml(a.description)}</a>
+              <div class="outstanding-meta">${expectedLabel}${committedLabel ? ` · ${committedLabel}` : ""}</div>
+            </div>
+          `;
+        }).join("");
+        blocks.push(`
+          <div class="outstanding-person">
+            <div class="outstanding-name">${escapeHtml(owner)} <span class="role-tag role-external">${role}</span></div>
+            ${personItems}
+          </div>
+        `);
+      }
+      $("#briefOutstanding").innerHTML = blocks.join("");
+    }
 
     // This week — group items by day for the next 7 days
     const weekDays = [];
@@ -858,13 +955,22 @@
         // open action items due this date
         const items = data.actionItems.filter(a => a.dueDate === dateISO && a.status !== "done");
         for (const it of items) {
-          const overdue = dateISO < t ? "overdue" : "";
-          const soon = !overdue && daysBetween(t, dateISO) <= 3 ? "soon" : "";
+          const ext = isExternal(it);
+          // soft language for external owners — no red, just a quieter outstanding/expected treatment
+          let urgency = "";
+          if (!ext) {
+            if (dateISO < t) urgency = "overdue";
+            else if (daysBetween(t, dateISO) <= 3) urgency = "soon";
+          } else {
+            if (dateISO < t) urgency = "outstanding";
+            else if (daysBetween(t, dateISO) <= 3) urgency = "expected";
+          }
           const flag = it.ownerStatus !== "resolved" ? "flag" : "";
+          const extCls = ext ? "external" : "";
           const owner = it.owner === "UNASSIGNED" ? "?" : it.owner.split(" ")[0];
           const desc = it.description.length > 22 ? it.description.slice(0,22) + "…" : it.description;
           const label = `${owner}: ${desc}`;
-          const classes = ["cal-event", overdue, soon, flag].filter(Boolean).join(" ");
+          const classes = ["cal-event", urgency, flag, extCls].filter(Boolean).join(" ");
           inner += `<button class="${classes}" data-action-id="${escapeHtml(it.id)}" title="${escapeHtml(it.owner + ": " + it.description)}" type="button">${escapeHtml(label)}</button>`;
         }
       }
@@ -909,7 +1015,7 @@
     if (item) {
       $("#modalAction").innerHTML = `
         <div class="desc">${escapeHtml(item.description)}</div>
-        <div class="meta-line">Owner: <strong>${escapeHtml(item.owner)}</strong> · Due ${escapeHtml(fmtDate(item.dueDate))} ${dueBadge(item.dueDate)}</div>
+        <div class="meta-line">Owner: <strong>${escapeHtml(item.owner)}</strong> · ${isExternal(item) ? "Expected" : "Due"} ${escapeHtml(fmtDate(item.dueDate))} ${dueBadge(item)}</div>
         <div class="quote">"${escapeHtml(item.originalText)}"</div>
         ${item.dueDateNote ? `<div class="quote"><em>${escapeHtml(item.dueDateNote)}</em></div>` : ""}
       `;
