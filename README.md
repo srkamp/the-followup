@@ -103,7 +103,3 @@ These are documented as future integrations:
 - **HubSpot logging.** For client-facing meetings (`type === "external"`), log action items to the HubSpot deal record.
 - **Asana sync.** For internal owners, mirror action items as Asana tasks; mark complete bidirectionally.
 - **Multi-user.** Right now `people.json` is a single hardcoded allowlist. Multi-user would mean per-user views, auth, and per-org allowlists.
-
-## Resume framing
-
-> Built a prototype that ingests meeting notes, parses action items with named owners and due dates, and publishes them to a dashboard. Auto-publishes via GitHub Pages. Designed extensibility for Slack, HubSpot, and Asana integration.
